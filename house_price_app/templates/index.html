@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ames AI Valuation Model</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Outfit:wght@300;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-accent: #00d4ff;
+            --secondary-accent: #7b2cbf;
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --input-bg: rgba(0, 0, 0, 0.3);
+            --text-main: #ffffff;
+            --text-muted: #94a3b8;
+            --success-color: #00ff9d;
+        }
+        body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color: #0f172a; color: var(--text-main); min-height: 100vh; display: flex; align-items: center; justify-content: center; position: relative; overflow-x: hidden; }
+        body::before { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: radial-gradient(circle, var(--secondary-accent) 0%, transparent 40%), radial-gradient(circle, var(--primary-accent) 0%, transparent 40%); opacity: 0.15; animation: moveBackground 20s ease-in-out infinite alternate; z-index: -2; }
+        @keyframes moveBackground { 0% { transform: rotate(0deg); } 100% { transform: rotate(15deg); } }
+        .container { width: 90%; max-width: 1000px; background: var(--glass-bg); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: 24px; padding: 40px; margin: 40px 0; position: relative; }
+        
+        header { text-align: center; margin-bottom: 40px; border-bottom: 1px solid var(--glass-border); padding-bottom: 20px; position: relative; }
+        .housing-blueprint { position: absolute; top: -30px; left: 50%; transform: translateX(-50%); width: 180px; height: 180px; z-index: -1; opacity: 0.2; animation: pulseHouse 4s infinite; pointer-events: none; }
+        .housing-blueprint path { fill: none; stroke: var(--primary-accent); stroke-width: 1.5; stroke-dasharray: 100; }
+        @keyframes pulseHouse { 0%, 100% { opacity: 0.15; transform: translateX(-50%) scale(1); } 50% { opacity: 0.3; transform: translateX(-50%) scale(1.05); } }
+        
+        h1 { font-family: 'Outfit', sans-serif; font-size: 2.5rem; margin-top: 60px; background: linear-gradient(90deg, #fff, var(--primary-accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        p.subtitle { color: var(--text-muted); font-size: 1rem; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; }
+
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; }
+        .input-group { display: flex; flex-direction: column; }
+        label { font-family: 'Outfit', sans-serif; color: var(--primary-accent); margin-bottom: 8px; font-weight: 500; }
+        input, select { background: var(--input-bg); border: 1px solid var(--glass-border); border-radius: 12px; padding: 14px 16px; color: white; outline: none; transition: 0.3s; }
+        input:focus, select:focus { border-color: var(--primary-accent); box-shadow: 0 0 15px rgba(0, 212, 255, 0.2); }
+        
+        button { background: linear-gradient(135deg, var(--primary-accent), #0077b6); color: #fff; border: none; padding: 16px 48px; font-size: 1.1rem; border-radius: 50px; cursor: pointer; transition: 0.2s; font-family: 'Outfit', sans-serif; text-transform: uppercase; margin-top: 20px; width: 100%; }
+        button:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0, 212, 255, 0.4); }
+
+        .result-card { background: rgba(0, 212, 255, 0.05); border: 1px solid var(--primary-accent); border-radius: 16px; padding: 40px; text-align: center; animation: fadeIn 0.5s ease-out; }
+        .result-value { font-family: 'Outfit', sans-serif; font-size: 3.5rem; font-weight: 700; color: white; text-shadow: 0 0 30px rgba(0, 212, 255, 0.6); margin: 10px 0; }
+        
+        /* AI EXPLANATION STYLES */
+        .ai-analysis { text-align: left; margin-top: 30px; background: rgba(0,0,0,0.2); padding: 20px; border-radius: 12px; border-left: 4px solid var(--success-color); }
+        .ai-title { color: var(--success-color); font-family: 'Outfit', sans-serif; font-size: 1.1rem; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+        .ai-list { list-style: none; padding: 0; margin: 0; }
+        .ai-list li { margin-bottom: 8px; color: var(--text-muted); font-size: 0.95rem; display: flex; align-items: start; gap: 8px; }
+        .ai-list li::before { content: '▹'; color: var(--primary-accent); }
+
+        .back-link { display: inline-block; margin-top: 20px; color: var(--primary-accent); text-decoration: none; }
+        @media (max-width: 600px) { h1 { font-size: 1.8rem; } .result-value { font-size: 2.5rem; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {% if prediction %}
+        <div class="result-card">
+            <div style="color: var(--text-muted); text-transform: uppercase; letter-spacing: 2px;">Estimated Valuation</div>
+            <div class="result-value">{{ prediction }}</div>
+            
+            <div class="ai-analysis">
+                <div class="ai-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                    AI Market Analysis
+                </div>
+                <ul class="ai-list">
+                    {% for item in explanations %}
+                        <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <a href="/" class="back-link">← Analyze Another Property</a>
+        </div>
+        {% else %}
+        <header>
+            <svg class="housing-blueprint" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <path d="M50 10 L90 40 L80 40 L80 90 L20 90 L20 40 L10 40 Z" />
+                <path d="M35 55 L65 55" />
+                <path d="M50 40 L50 90" />
+                <path d="M20 40 L80 40" />
+                <circle cx="50" cy="30" r="3" fill="var(--primary-accent)" />
+            </svg>
+            <h1>Ames Predictive AI</h1>
+            <p class="subtitle">Advanced Student Model Valuation • Iowa Dataset</p>
+        </header>
+
+        <form method="POST">
+            <div class="form-grid">
+                {% for col in num_cols %}
+                <div class="input-group">
+                    <label for="{{ col }}">{{ col }}</label>
+                    <input type="number" step="any" name="{{ col }}" required placeholder="0.0">
+                </div>
+                {% endfor %}
+                {% for col in cat_cols %}
+                <div class="input-group">
+                    <label for="{{ col }}">{{ col }}</label>
+                    <select name="{{ col }}">
+                        {% for option in cat_options[col] %}
+                            <option value="{{ option }}">{{ option }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endfor %}
+            </div>
+            <button type="submit">Run Valuation</button>
+        </form>
+        {% endif %}
+    </div>
+</body>
+</html>

@@ -1,0 +1,20 @@
+[
+    "Foundation",
+    "FireplaceQu",
+    "YearRemodAdd",
+    "Fireplaces",
+    "MSZoning",
+    "GarageCond",
+    "GarageCars",
+    "GarageQual",
+    "KitchenAbvGr",
+    "GrLivArea",
+    "TotalSF",
+    "KitchenQual",
+    "GarageType",
+    "BsmtQual",
+    "OverallQual",
+    "ExterQual",
+    "TotalBath",
+    "CentralAir"
+]
