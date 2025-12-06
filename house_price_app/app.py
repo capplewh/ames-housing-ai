@@ -35,8 +35,8 @@ class SkewnessTransformer(BaseEstimator, TransformerMixin):
 # ===================================================================================
 # 🚑 THE FIX FOR RENDER DEPLOYMENT
 # ===================================================================================
-import __main__                              # <--- ADDED THIS
-__main__.SkewnessTransformer = SkewnessTransformer  # <--- ADDED THIS
+import __main__                              
+__main__.SkewnessTransformer = SkewnessTransformer 
 # ===================================================================================
 
 app = Flask(__name__)
@@ -46,7 +46,7 @@ app = Flask(__name__)
 # ===================================================================================
 pipeline = None
 selected_features = []
-baseline_averages = {} # To compare user input against
+baseline_averages = {} 
 
 try:
     if not os.path.exists('student_pipeline.pkl'): raise FileNotFoundError("PKL file missing")
@@ -55,9 +55,6 @@ try:
     with open('selected_features.json', 'r') as f:
         selected_features = json.load(f)
         
-    # Calculate simple baselines from the trained model's perspective if possible,
-    # or use hardcoded averages for the Ames dataset to generate explanations.
-    # Here we define rough averages for the key numeric features to create the "AI Logic"
     baseline_averages = {
         'GrLivArea': 1500, 'TotalSF': 2500, 'OverallQual': 6, 'YearBuilt': 1970,
         'GarageCars': 2, 'TotalBath': 2, 'LotArea': 10000, 'HouseAge': 40
@@ -71,4 +68,118 @@ except Exception as e:
 # ===================================================================================
 def get_feature_info():
     if not pipeline: return [], [], {}
-    num_cols, cat_cols,
+    num_cols, cat_cols, cat_options = [], [], {}
+    try:
+        preprocessor = pipeline.named_steps['preprocessor']
+        for name, transformer, cols in preprocessor.transformers_:
+            if name == 'remainder': continue
+            if hasattr(cols, 'tolist'): cols = cols.tolist()
+            else: cols = list(cols)
+            valid_cols = [c for c in cols if c in selected_features]
+            if name == 'num': num_cols.extend(valid_cols)
+            elif name == 'cat':
+                cat_cols.extend(valid_cols)
+                try:
+                    ohe = transformer.named_steps['onehot']
+                    for col_name, categories in zip(cols, ohe.categories_):
+                        if col_name in selected_features:
+                            cat_options[col_name] = categories.tolist()
+                except: pass
+    except: pass
+    for c in cat_cols:
+        if c not in cat_options: cat_options[c] = ["Unknown"]
+    return num_cols, cat_cols, cat_options
+
+if pipeline:
+    num_cols, cat_cols, cat_options = get_feature_info()
+else:
+    num_cols, cat_cols, cat_options = [], [], {}
+
+# ===================================================================================
+# 4. EXPLANATION LOGIC
+# ===================================================================================
+def generate_explanations(input_data):
+    insights = []
+    
+    # Size Logic
+    sq_ft = input_data.get('GrLivArea', 0)
+    if sq_ft > 2000:
+        insights.append(f"Expansive living space ({int(sq_ft)} sq ft) significantly boosts value.")
+    elif sq_ft < 1000:
+        insights.append(f"Smaller living area ({int(sq_ft)} sq ft) limits the price potential.")
+
+    # Quality Logic
+    quality = input_data.get('OverallQual', 5)
+    if quality >= 8:
+        insights.append("High build quality rating (8+) is a major value driver.")
+    elif quality <= 4:
+        insights.append("Below-average build quality reduces the estimate.")
+
+    # Garage Logic
+    cars = input_data.get('GarageCars', 0)
+    if cars >= 3:
+        insights.append("Large garage capacity (3+ cars) is a premium feature.")
+    
+    # Age Logic
+    if 'HouseAge' in input_data:
+        age = input_data['HouseAge']
+        if age < 5:
+            insights.append("Newer construction commands a premium market price.")
+        elif age > 50 and input_data.get('OverallQual', 5) >= 7:
+            insights.append("Vintage appeal: Older home with high quality retains value well.")
+
+    # Neighborhood Logic
+    nbhd = input_data.get('Neighborhood', '')
+    if nbhd in ['NoRidge', 'NridgHt', 'StoneBr']:
+        insights.append(f"Located in high-demand neighborhood ({nbhd}).")
+        
+    if not insights:
+        insights.append("Property aligns with standard market averages for this area.")
+        
+    return insights
+
+# ===================================================================================
+# 5. ROUTES
+# ===================================================================================
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if pipeline is None: return "Error: Model not loaded."
+    
+    prediction_text = None
+    explanations = []
+
+    if request.method == 'POST':
+        try:
+            input_data = {}
+            for col in num_cols:
+                val = request.form.get(col)
+                input_data[col] = float(val) if val else 0.0
+            for col in cat_cols:
+                input_data[col] = request.form.get(col)
+
+            input_df = pd.DataFrame([input_data])
+            
+            for col in selected_features:
+                if col not in input_df.columns:
+                    input_df[col] = 0.0 if col in num_cols else cat_options.get(col, [""])[0]
+
+            input_df = input_df[selected_features]
+
+            log_pred = pipeline.predict(input_df)[0]
+            final_price = np.expm1(log_pred)
+            prediction_text = f"${final_price:,.2f}"
+            
+            explanations = generate_explanations(input_data)
+            
+        except Exception as e:
+            prediction_text = f"Error: {str(e)}"
+
+    return render_template('index.html', 
+                           num_cols=num_cols,
+                           cat_cols=cat_cols,
+                           cat_options=cat_options,
+                           prediction=prediction_text,
+                           explanations=explanations)
+
+if __name__ == "__main__":
+    app.run(debug=True)
