@@ -32,6 +32,13 @@ class SkewnessTransformer(BaseEstimator, TransformerMixin):
     def get_feature_names_out(self, input_features=None):
         return input_features
 
+# ===================================================================================
+# 🚑 THE FIX FOR RENDER DEPLOYMENT
+# ===================================================================================
+import __main__                              # <--- ADDED THIS
+__main__.SkewnessTransformer = SkewnessTransformer  # <--- ADDED THIS
+# ===================================================================================
+
 app = Flask(__name__)
 
 # ===================================================================================
@@ -64,126 +71,4 @@ except Exception as e:
 # ===================================================================================
 def get_feature_info():
     if not pipeline: return [], [], {}
-    num_cols, cat_cols, cat_options = [], [], {}
-    try:
-        preprocessor = pipeline.named_steps['preprocessor']
-        for name, transformer, cols in preprocessor.transformers_:
-            if name == 'remainder': continue
-            if hasattr(cols, 'tolist'): cols = cols.tolist()
-            else: cols = list(cols)
-            valid_cols = [c for c in cols if c in selected_features]
-            if name == 'num': num_cols.extend(valid_cols)
-            elif name == 'cat':
-                cat_cols.extend(valid_cols)
-                try:
-                    ohe = transformer.named_steps['onehot']
-                    for col_name, categories in zip(cols, ohe.categories_):
-                        if col_name in selected_features:
-                            cat_options[col_name] = categories.tolist()
-                except: pass
-    except: pass
-    for c in cat_cols:
-        if c not in cat_options: cat_options[c] = ["Unknown"]
-    return num_cols, cat_cols, cat_options
-
-if pipeline:
-    num_cols, cat_cols, cat_options = get_feature_info()
-else:
-    num_cols, cat_cols, cat_options = [], [], {}
-
-# ===================================================================================
-# 4. EXPLANATION LOGIC
-# ===================================================================================
-def generate_explanations(input_data):
-    """
-    Generates text explanations based on how inputs compare to baseline averages.
-    """
-    insights = []
-    
-    # 1. Size Logic
-    sq_ft = input_data.get('GrLivArea', 0)
-    if sq_ft > 2000:
-        insights.append(f"Create expansive living space ({int(sq_ft)} sq ft) significantly boosts value.")
-    elif sq_ft < 1000:
-        insights.append(f"Smaller living area ({int(sq_ft)} sq ft) is a limiting factor on price.")
-
-    # 2. Quality Logic
-    quality = input_data.get('OverallQual', 5)
-    if quality >= 8:
-        insights.append("High build quality rating (8+) is a major value driver.")
-    elif quality <= 4:
-        insights.append("Below-average build quality reduces the estimate.")
-
-    # 3. Garage Logic
-    cars = input_data.get('GarageCars', 0)
-    if cars >= 3:
-        insights.append("Large garage capacity (3+ cars) is a premium feature.")
-    
-    # 4. Age Logic
-    if 'HouseAge' in input_data:
-        age = input_data['HouseAge']
-        if age < 5:
-            insights.append("Newer construction commands a premium market price.")
-        elif age > 50 and input_data.get('OverallQual', 5) >= 7:
-            insights.append("Vintage appeal: Older home with high quality retains value well.")
-
-    # 5. Neighborhood Logic (Simplistic check)
-    nbhd = input_data.get('Neighborhood', '')
-    if nbhd in ['NoRidge', 'NridgHt', 'StoneBr']:
-        insights.append(f"Located in high-demand neighborhood ({nbhd}).")
-        
-    if not insights:
-        insights.append("This property aligns with standard market averages for this area.")
-        
-    return insights
-
-# ===================================================================================
-# 5. ROUTES
-# ===================================================================================
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    if pipeline is None: return "Error: Model not loaded."
-    
-    prediction_text = None
-    explanations = []
-
-    if request.method == 'POST':
-        try:
-            input_data = {}
-            # Capture numeric
-            for col in num_cols:
-                val = request.form.get(col)
-                input_data[col] = float(val) if val else 0.0
-            # Capture categorical
-            for col in cat_cols:
-                input_data[col] = request.form.get(col)
-
-            input_df = pd.DataFrame([input_data])
-            
-            # Fill missing
-            for col in selected_features:
-                if col not in input_df.columns:
-                    input_df[col] = 0.0 if col in num_cols else cat_options.get(col, [""])[0]
-
-            input_df = input_df[selected_features]
-
-            # Predict
-            log_pred = pipeline.predict(input_df)[0]
-            final_price = np.expm1(log_pred)
-            prediction_text = f"${final_price:,.2f}"
-            
-            # Generate AI Explainability
-            explanations = generate_explanations(input_data)
-            
-        except Exception as e:
-            prediction_text = f"Error: {str(e)}"
-
-    return render_template('index.html', 
-                           num_cols=num_cols,
-                           cat_cols=cat_cols,
-                           cat_options=cat_options,
-                           prediction=prediction_text,
-                           explanations=explanations)
-
-if __name__ == "__main__":
-    app.run(debug=True)
+    num_cols, cat_cols,
